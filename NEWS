@@ -11,6 +11,11 @@ PHP                                                                        NEWS
     registrations are freed while still reachable from the cycle collector.
     (Ilia Alshanetsky)
 
+- JSON:
+  . Added a vectorized (SSE2/NEON) fast path to php_json_escape_string()
+    that bulk-copies runs of bytes which need no escaping, speeding up
+    json_encode() on ASCII-heavy strings.
+
 
 10 Sep 2026, PHP 8.6.0beta3
 
