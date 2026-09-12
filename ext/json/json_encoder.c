@@ -370,6 +370,50 @@ static zend_result php_json_encode_array(smart_str *buf, zval *val, int options,
 }
 /* }}} */
 
+/* EXPERIMENTAL: direct byte-indexed lookup table, replacing the packed
+ * 256-bit charmap bitmap ZEND_BIT_TEST() decoded via `bits[bit/32] >>
+ * (bit&31) & 1` -- division/mod-by-32-via-shift-and-mask, an array
+ * index, a shift, and a mask, ~6-7 instructions per test (confirmed via
+ * objdump). A direct table needs one: `table[byte]`. 256 bytes instead
+ * of 32 is still trivially L1-resident and stays hot across the whole
+ * loop. This doesn't touch the loop shape or add any call boundary
+ * (unlike every dispatch-based attempt in this investigation, all of
+ * which lost to their own per-call overhead) -- it only cuts the
+ * instruction count of the classification test itself, paid on every
+ * byte regardless of content, most visibly on non-ASCII-heavy content
+ * where that test runs on nearly every byte and nothing else in the
+ * loop executes. Generated from and verified bit-exact against the
+ * original charmap for all 256 byte values. */
+static const uint8_t php_json_escape_dirty_table[256] = {
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+};
+
+/* Combined with the direct-lookup-table change above: -fcaller-saves
+ * (on by default at -O2) lets GCC allocate the SIMD dirty-mask compare
+ * constants into caller-saved XMM registers across the ~20 calls this
+ * loop makes (smart_str_appendl()/php_next_utf8_char()), emitting a
+ * fresh reload at nearly every call site instead of one spill slot.
+ * Verified independently via objdump: 108 reloads / 132 SIMD
+ * instructions -> 1 reload / 24 SIMD instructions with this attribute.
+ * GCC-only; a no-op elsewhere. */
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("no-caller-saves")))
+#endif
 zend_result php_json_escape_string(
 		smart_str *buf, const char *s, size_t len,
 		int options, php_json_encoder *encoder) /* {{{ */
@@ -408,14 +452,10 @@ zend_result php_json_escape_string(
 	pos = 0;
 
 	do {
-		static const uint32_t charmap[8] = {
-			0xffffffff, 0x500080c4, 0x10000000, 0x00000000,
-			0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
-
 #ifdef XSSE2
 #if defined(__aarch64__) || defined(_M_ARM64)
 		while (len >= sizeof(__m128i)) {
-			if (UNEXPECTED(ZEND_BIT_TEST(charmap, (unsigned char) s[pos]))) {
+			if (UNEXPECTED(php_json_escape_dirty_table[(unsigned char) s[pos]])) {
 				break;
 			}
 
@@ -440,7 +480,7 @@ zend_result php_json_escape_string(
 		}
 #else
 		while (len >= sizeof(__m128i)) {
-			if (UNEXPECTED(ZEND_BIT_TEST(charmap, (unsigned char) s[pos]))) {
+			if (UNEXPECTED(php_json_escape_dirty_table[(unsigned char) s[pos]])) {
 				break;
 			}
 
@@ -465,7 +505,7 @@ zend_result php_json_escape_string(
 #endif
 
 		unsigned int us = (unsigned char)s[pos];
-		if (EXPECTED(!ZEND_BIT_TEST(charmap, us))) {
+		if (EXPECTED(!php_json_escape_dirty_table[us])) {
 			pos++;
 			len--;
 			if (len == 0) {
