@@ -75,6 +75,17 @@ static zend_always_inline uint64_t php_json_escape_dirty_bitmap(
 #endif
 }
 
+/* zend_ulong_ntz() takes a zend_ulong, so the uint64_t bitmap is narrowed to
+ * it first. That's lossless only because the two lane widths above line up
+ * with the zend_ulong sizes they actually run on: the 1-bit-per-lane (x86)
+ * bitmap never exceeds 16 set bits, fitting a 32-bit zend_ulong, while the
+ * 4-bit-per-lane (aarch64) bitmap needs up to 64 bits and only occurs on
+ * 64-bit zend_ulong builds. Guard that pairing so a future architecture
+ * can't silently violate it. */
+ZEND_STATIC_ASSERT(
+	PHP_JSON_DIRTY_BITMAP_LANE_BITS == 1 || SIZEOF_ZEND_LONG == 8,
+	"nibble-per-lane dirty bitmap requires a 64-bit zend_ulong for zend_ulong_ntz() to see all bits");
+
 static zend_always_inline unsigned int php_json_dirty_bitmap_lane(uint64_t bitmap)
 {
 	return (unsigned int) (zend_ulong_ntz((zend_ulong) bitmap) / PHP_JSON_DIRTY_BITMAP_LANE_BITS);
@@ -702,11 +713,6 @@ zend_result php_json_escape_string(
 				size_t consumed;
 				if (php_json_escape_dirty_char(buf, &s, &len, &pos, options, encoder, checkpoint, &consumed) == FAILURE) {
 					return FAILURE;
-				}
-				if (len == 0) {
-					smart_str_appendl(buf, s, pos);
-					smart_str_appendc(buf, '"');
-					return SUCCESS;
 				}
 				if (consumed >= chunk_left) {
 					break;
