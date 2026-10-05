@@ -5352,6 +5352,11 @@ static zend_result zend_compile_func_array_map(znode *result, zend_ast_list *arg
 	zend_compile_expr(&array, args->child[1]);
 	/* array is an argument to both ZEND_TYPE_ASSERT and to ZEND_FE_RESET_R. */
 	if (array.op_type == IS_CONST) {
+		/* Intern strings first: interning a string with refcount > 1 would
+		 * copy it and leak the original. */
+		if (Z_TYPE(array.u.constant) == IS_STRING) {
+			zval_make_interned_string(&array.u.constant);
+		}
 		Z_TRY_ADDREF(array.u.constant);
 	}
 
