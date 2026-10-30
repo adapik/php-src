@@ -1103,6 +1103,15 @@ exit:
 	return variable_ptr;
 }
 
+/* Reset cache slot to dodge fast path in next execution. */
+static zend_always_inline void zend_reset_write_cache_slot(void **cache_slot)
+{
+	if (cache_slot) {
+		CACHE_POLYMORPHIC_PTR_EX(cache_slot, NULL, NULL);
+		CACHE_PTR_EX(cache_slot + 2, NULL);
+	}
+}
+
 ZEND_API zval *zend_std_write_property(zend_object *zobj, zend_string *name, zval *value, void **cache_slot) /* {{{ */
 {
 	zval *variable_ptr, tmp;
@@ -1131,18 +1140,17 @@ try_again:
 				 && !(Z_PROP_FLAG_P(variable_ptr) & IS_PROP_REINITABLE)) {
 					zend_readonly_property_modification_error(prop_info);
 					variable_ptr = &EG(error_zval);
+					zend_reset_write_cache_slot(cache_slot);
 					goto exit;
 				}
 				if ((prop_info->flags & ZEND_ACC_PPP_SET_MASK) && !zend_asymmetric_property_has_set_access(prop_info)) {
 					zend_asymmetric_visibility_property_modification_error(prop_info, "modify");
 					variable_ptr = &EG(error_zval);
-					if (cache_slot) {
-						/* Reset cache slot to dodge fast path in next execution. */
-						CACHE_POLYMORPHIC_PTR_EX(cache_slot, NULL, NULL);
-						CACHE_PTR_EX(cache_slot + 2, NULL);
-					}
+					zend_reset_write_cache_slot(cache_slot);
 					goto exit;
 				}
+			} else {
+				zend_reset_write_cache_slot(cache_slot);
 			}
 		}
 

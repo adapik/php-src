@@ -13,6 +13,9 @@ PHP                                                                        NEWS
     (lazerg)
   . Fixed bug GH-25007 (Partial function application: named args in a constant
     expression cause out-of-bounds write in zp_compile()). (lazerg)
+  . Fixed ZEND_ASSIGN_OBJ fast path bypassing readonly and asymmetric
+    visibility scope checks after a rejected or __set()-forwarded write
+    primed the cache slot. (Alexander Danilov)
 
 - CLI:
   . Fixed bug GH-24697 (PHP_HTTP_PARSER_STRICT build option doesn't work).
