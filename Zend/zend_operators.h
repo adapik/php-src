@@ -963,18 +963,17 @@ static zend_always_inline bool fast_is_identical_function(const zval *op1, const
 		return 0;
 	} else if (Z_TYPE_P(op1) <= IS_TRUE) {
 		return 1;
+	} else if (Z_TYPE_P(op1) == IS_STRING) {
+		return zend_string_equals(Z_STR_P(op1), Z_STR_P(op2));
+	} else if (Z_TYPE_P(op1) == IS_LONG) {
+		return Z_LVAL_P(op1) == Z_LVAL_P(op2);
 	}
 	return zend_is_identical(op1, op2);
 }
 
 static zend_always_inline bool fast_is_not_identical_function(const zval *op1, const zval *op2)
 {
-	if (Z_TYPE_P(op1) != Z_TYPE_P(op2)) {
-		return 1;
-	} else if (Z_TYPE_P(op1) <= IS_TRUE) {
-		return 0;
-	}
-	return !zend_is_identical(op1, op2);
+	return !fast_is_identical_function(op1, op2);
 }
 
 /* buf points to the END of the buffer */
