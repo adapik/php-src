@@ -3930,6 +3930,13 @@ PHP_FUNCTION(array_slice)
 		RETURN_EMPTY_ARRAY();
 	}
 
+	if (offset == 0 && length == num_in) {
+		HashTable *ht = Z_ARRVAL_P(input);
+		if (HT_IS_PACKED(ht) && HT_IS_WITHOUT_HOLES(ht) && ht->nNextFreeElement == num_in) {
+			RETURN_COPY(input);
+		}
+	}
+
 	/* Initialize returned array */
 	array_init_size(return_value, (uint32_t)length);
 
@@ -4283,10 +4290,12 @@ static zend_always_inline void php_array_merge_wrapper(INTERNAL_FUNCTION_PARAMET
 		RETURN_THROWS();
 	}
 
-	if (argc == 2) {
+	if (argc <= 2) {
 		zval *ret = NULL;
 
-		if (zend_hash_num_elements(Z_ARRVAL(args[0])) == 0) {
+		if (argc == 1) {
+			ret = &args[0];
+		} else if (zend_hash_num_elements(Z_ARRVAL(args[0])) == 0) {
 			ret = &args[1];
 		} else if (zend_hash_num_elements(Z_ARRVAL(args[1])) == 0) {
 			ret = &args[0];

@@ -14,7 +14,7 @@ memory_limit=8M
 // Existing break chars in str cause the initialize allocation to be too short.
 // OOM while extending string.
 $str = str_repeat("\r\n", 2*1024*1024);
-wordwrap($str, strlen($str), "\r\n", false);
+wordwrap($str, strlen($str) - 1, "\r\n", false);
 
 ?>
 --EXPECTF--

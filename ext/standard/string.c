@@ -765,6 +765,10 @@ PHP_FUNCTION(wordwrap)
 		RETURN_THROWS();
 	}
 
+	if (linelength > 0 && ZSTR_LEN(text) <= (size_t) linelength) {
+		RETURN_STR_COPY(text);
+	}
+
 	/* Special case for a single-character break as it needs no
 	   additional storage space */
 	if (breakchar_len == 1 && !docut) {

@@ -670,6 +670,18 @@ static const char *php_date_short_day_name(timelib_sll y, timelib_sll m, timelib
 /* }}} */
 
 /* {{{ date_format - (gm)date helper */
+static bool php_date_format_needs_offset(const char *format, size_t format_len)
+{
+	for (size_t i = 0; i < format_len; i++) {
+		switch (format[i]) {
+			case 'I': case 'p': case 'P': case 'O': case 'T':
+			case 'e': case 'Z': case 'c': case 'r':
+				return true;
+		}
+	}
+	return false;
+}
+
 static zend_string *date_format(const char *format, size_t format_len, const timelib_time *t, bool localtime)
 {
 	smart_str            string = {0};
@@ -685,7 +697,7 @@ static zend_string *date_format(const char *format, size_t format_len, const tim
 		return ZSTR_EMPTY_ALLOC();
 	}
 
-	if (localtime) {
+	if (localtime && php_date_format_needs_offset(format, format_len)) {
 		if (t->zone_type == TIMELIB_ZONETYPE_ABBR) {
 			offset = timelib_time_offset_ctor();
 			offset->offset = (t->z + (t->dst * 3600));
@@ -846,7 +858,7 @@ static zend_string *date_format(const char *format, size_t format_len, const tim
 
 	smart_str_0(&string);
 
-	if (localtime) {
+	if (offset) {
 		timelib_time_offset_dtor(offset);
 	}
 
@@ -928,7 +940,7 @@ PHPAPI bool php_idate(char format, time_t ts, bool localtime, int *result)
 		timelib_unixtime2gmt(t, ts);
 	}
 
-	if (!localtime) {
+	if (!localtime && (format == 'I' || format == 'Z')) {
 		if (t->zone_type == TIMELIB_ZONETYPE_ABBR) {
 			offset = timelib_time_offset_ctor();
 			offset->offset = (t->z + (t->dst * 3600));
@@ -999,7 +1011,7 @@ PHPAPI bool php_idate(char format, time_t ts, bool localtime, int *result)
 			success = false;
 	}
 
-	if (!localtime) {
+	if (offset) {
 		timelib_time_offset_dtor(offset);
 	}
 	timelib_time_dtor(t);
