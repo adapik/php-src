@@ -43,6 +43,11 @@
 	https://wiki.php.net/rfc/remove_hex_support_in_numeric_strings */
 #define NO_HEX_FP 1
 
+#ifdef _MSC_VER
+/* False positive in zend_strtod(): the shift count of (1<<i) is at most 4. */
+# pragma warning(disable: 4334)
+#endif
+
 #include <inttypes.h>
 
 #ifdef USE_LOCALE
@@ -81,6 +86,9 @@
  *     */
 #define IEEE_BIG_ENDIAN
 #undef IEEE_LITTLE_ENDIAN
+/* The 64-bit integer code in dtoa.c reads a double as a 64-bit integer, which
+ * requires both to have the same word order. */
+#define NO_BF96 1
 #endif
 
 #ifdef __vax__
